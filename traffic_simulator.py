@@ -37,9 +37,12 @@ init(autoreset=True)
 
 # -----------------------------------------------------------------------------
 # CONFIGURACIÓN
+# ⚠️  PUERTO: 
+#   - Local (host)   → 5433 (mapeado por docker-compose)
+#   - Docker interno → 5432 (conexión entre contenedores vía DB_PORT env)
 # -----------------------------------------------------------------------------
 DB_HOST = os.environ.get("DB_HOST", "localhost")
-DB_PORT = int(os.environ.get("DB_PORT", "5433"))
+DB_PORT = int(os.environ.get("DB_PORT", "5433"))   # 5433 para local, 5432 vía env var en Docker
 DB_NAME = os.environ.get("DB_NAME", "honeylab")
 
 USERS = {
@@ -160,10 +163,10 @@ def banner() -> None:
 ╚══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}
 """)
     print(f"  {Fore.CYAN}DB:{Style.RESET_ALL}        {DB_HOST}:{DB_PORT}/{DB_NAME}")
-    print(f"  {Fore.CYAN}Usuarios:{Style.RESET_ALL}     {USERS['normal']['user']} (95%) + {USERS['sospechoso']['user']} (5%)")
-    print(f"  {Fore.CYAN}Pausas:{Style.RESET_ALL}      {PAUSA_MIN}s – {PAUSA_MAX}s entre consultas")
-    print(f"  {Fore.CYAN}Cebo:{Style.RESET_ALL}        tb_credenciales_vpn_admin")
-    print(f"  {Fore.CYAN}Monitor:{Style.RESET_ALL}     Ejecutá monitor_honeylab.py en otra terminal para ver alertas\n")
+    print(f"  {Fore.CYAN}Usuarios:{Style.RESET_ALL}  {USERS['normal']['user']} (95%) + {USERS['sospechoso']['user']} (5%)")
+    print(f"  {Fore.CYAN}Pausas:{Style.RESET_ALL}    {PAUSA_MIN}s – {PAUSA_MAX}s entre consultas")
+    print(f"  {Fore.CYAN}Cebo:{Style.RESET_ALL}      tb_credenciales_vpn_admin")
+    print(f"  {Fore.CYAN}Monitor:{Style.RESET_ALL}   Ejecuta monitor_honeylab.py en otra terminal para ver alertas\n")
     print(f"{Fore.YELLOW}{'═' * 66}{Style.RESET_ALL}\n")
 
 
@@ -189,7 +192,7 @@ def log_error(user: str, err: str) -> None:
 
 
 def log_stats() -> None:
-    """Muestra estadísticas acumuladas y las resetea."""
+    """Muestra estadísticas acumuladas."""
     total = STATS["total"]
     if total == 0:
         return
@@ -207,13 +210,41 @@ def log_stats() -> None:
 
 
 # -----------------------------------------------------------------------------
-# CONEXIONES A POSTGRESQL
+# FIX: CONEXIÓN CON REINTENTOS Y BACKOFF EXPONENCIAL
+# Resuelve la race condition entre el simulador y PostgreSQL en el arranque.
 # -----------------------------------------------------------------------------
+def conectar_con_reintentos(perfil: str, max_intentos: int = 10, espera_base: float = 3.0) -> Optional[psycopg2.extensions.connection]:
+    """
+    Intenta conectar a PostgreSQL con backoff exponencial.
+    Fundamental cuando el contenedor arranca antes de que Postgres esté listo.
+    """
+    creds = USERS[perfil]
+    for intento in range(1, max_intentos + 1):
+        try:
+            conn = psycopg2.connect(
+                host=DB_HOST,
+                port=DB_PORT,
+                dbname=DB_NAME,
+                user=creds["user"],
+                password=creds["pass"],
+                connect_timeout=5,
+            )
+            conn.set_session(autocommit=True)
+            ts = timestamp()
+            print(f"{Fore.GREEN}[{ts}] ✔ Conectado como {creds['user']} (intento {intento}/{max_intentos}){Style.RESET_ALL}")
+            return conn
+        except psycopg2.OperationalError as e:
+            espera = min(espera_base * intento, 30.0)   # máximo 30s de espera
+            ts = timestamp()
+            print(f"{Fore.YELLOW}[{ts}] [{intento}/{max_intentos}] PostgreSQL no listo ({creds['user']}), reintentando en {espera:.0f}s...{Style.RESET_ALL}")
+            time.sleep(espera)
+
+    log_error(creds["user"], f"No se pudo conectar tras {max_intentos} intentos. Comprueba que el contenedor está sano.")
+    return None
+
+
 def conectar(perfil: str) -> Optional[psycopg2.extensions.connection]:
-    """
-    Crea una conexión a PostgreSQL con las credenciales del perfil indicado.
-    Retorna None si falla (para que el loop principal reintente después).
-    """
+    """Wrapper simple para reconexiones durante el loop (sin banner de reintentos)."""
     creds = USERS[perfil]
     try:
         conn = psycopg2.connect(
@@ -224,7 +255,7 @@ def conectar(perfil: str) -> Optional[psycopg2.extensions.connection]:
             password=creds["pass"],
             connect_timeout=5,
         )
-        conn.set_session(autocommit=True)  # Cada query se ejecuta y commitea sola
+        conn.set_session(autocommit=True)
         return conn
     except psycopg2.OperationalError as e:
         log_error(creds["user"], str(e))
@@ -236,14 +267,10 @@ def conectar(perfil: str) -> Optional[psycopg2.extensions.connection]:
 # -----------------------------------------------------------------------------
 def ejecutar_query(conn: psycopg2.extensions.connection, query: str) -> None:
     """Ejecuta una query y consume el resultado."""
-    try:
-        with conn.cursor() as cur:
-            cur.execute(query)
-            # Consumir todas las filas para evitar "queued query" pendiente
-            if cur.description:
-                cur.fetchall()  # Consumir todas las filas
-    except Exception as e:
-        raise
+    with conn.cursor() as cur:
+        cur.execute(query)
+        if cur.description:
+            cur.fetchall()
 
 
 # -----------------------------------------------------------------------------
@@ -252,13 +279,20 @@ def ejecutar_query(conn: psycopg2.extensions.connection, query: str) -> None:
 def main() -> None:
     banner()
 
-    # Contador para mostrar estadísticas cada N consultas
+    # FIX: Espera activa al arranque — el simulador no falla inmediatamente
+    # si PostgreSQL aún no está listo (race condition en docker-compose up).
+    print(f"{Fore.CYAN}[{timestamp()}] Estableciendo conexiones iniciales...{Style.RESET_ALL}\n")
+    conn_normal     = conectar_con_reintentos("normal")
+    conn_sospechoso = conectar_con_reintentos("sospechoso")
+
+    if conn_normal is None or conn_sospechoso is None:
+        print(f"{Fore.RED}[{timestamp()}] No se pudo inicializar el simulador. Abortando.{Style.RESET_ALL}")
+        sys.exit(1)
+
+    print(f"\n{Fore.GREEN}[{timestamp()}] Simulador listo. Iniciando tráfico...\n{Style.RESET_ALL}")
+
     STATS_INTERVAL = 50
     last_stats = 0
-
-    # Pool de conexiones recicladas para no abrir/cerrar en cada iteración
-    conn_normal: Optional[psycopg2.extensions.connection] = None
-    conn_sospechoso: Optional[psycopg2.extensions.connection] = None
 
     try:
         while True:
@@ -267,23 +301,22 @@ def main() -> None:
 
             if es_honeytoken:
                 perfil = "sospechoso"
-                query = QUERY_HONEYTOKEN
+                query  = QUERY_HONEYTOKEN
+                conn   = conn_sospechoso
             else:
                 perfil = "normal"
-                query = random.choice(QUERIES_NORMAL)
+                query  = random.choice(QUERIES_NORMAL)
+                conn   = conn_normal
 
             creds = USERS[perfil]
-            conn = conn_sospechoso if perfil == "sospechoso" else conn_normal
 
             # ─── Verificar / reciclar conexión ───
             if conn is None or conn.closed:
                 conn = conectar(perfil)
                 if conn is None:
                     STATS["errores"] += 1
-                    # Esperar y reintentar
                     time.sleep(5)
                     continue
-                # Guardar la conexión en el pool
                 if perfil == "sospechoso":
                     conn_sospechoso = conn
                 else:
@@ -320,8 +353,7 @@ def main() -> None:
                 log_stats()
 
             # ─── Pausa realista ───
-            pausa = random.uniform(PAUSA_MIN, PAUSA_MAX)
-            time.sleep(pausa)
+            time.sleep(random.uniform(PAUSA_MIN, PAUSA_MAX))
 
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}[{timestamp()}] Simulador detenido por el usuario.{Style.RESET_ALL}")
@@ -329,7 +361,7 @@ def main() -> None:
         for conn in (conn_normal, conn_sospechoso):
             if conn and not conn.closed:
                 conn.close()
-        print(f"{Fore.GREEN}[{timestamp()}] Conexiones cerradas. ¡Hasta la próxima, man!{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}[{timestamp()}] Conexiones cerradas.{Style.RESET_ALL}")
         sys.exit(0)
 
 

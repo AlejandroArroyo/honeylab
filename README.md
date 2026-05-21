@@ -389,7 +389,7 @@ honeylab/
 
 ## 🧪 Ejecución local (sin Docker)
 
-Si preferís ejecutar los scripts en tu máquina directamente:
+Si prefieres ejecutar los scripts en tu máquina directamente:
 
 ```bash
 # 1. Instalar dependencias

@@ -47,6 +47,7 @@ from queue import Queue, Empty
 from typing import Optional, Set
 
 import psycopg2
+from psycopg2 import sql as pgsql
 from flask import Flask, Response, render_template_string, jsonify
 
 # =============================================================================
@@ -152,16 +153,19 @@ def aislar_usuario(user: str) -> bool:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM %s",
-                (user,),
+                pgsql.SQL("REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM {}").format(
+                    pgsql.Identifier(user)
+                ),
             )
             cur.execute(
-                "REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM %s",
-                (user,),
+                pgsql.SQL("REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM {}").format(
+                    pgsql.Identifier(user)
+                ),
             )
             cur.execute(
-                "REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM %s",
-                (user,),
+                pgsql.SQL("REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM {}").format(
+                    pgsql.Identifier(user)
+                ),
             )
         _revoked_users.add(user)
         _stats["revoked_users"] = len(_revoked_users)
@@ -930,6 +934,7 @@ if __name__ == "__main__":
     print(f"  {chr(27)}[36mPuerto:{chr(27)}[0m       http://localhost:{FLASK_PORT}")
     print(f"  {chr(27)}[36mLogs:{chr(27)}[0m         {LOG_DIR.resolve()}")
     print(f"  {chr(27)}[36mCebo:{chr(27)}[0m          {HONEYTOKEN_TABLE}")
+    print(f"  {chr(27)}[36mAdmin DB:{chr(27)}[0m       postgres@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']}")
     print(f"  {chr(27)}[36mPolling:{chr(27)}[0m       cada {POLL_INTERVAL}s")
     print(f"\n  {chr(27)}[33mRecomendación:{chr(27)}[0m  Ejecutá traffic_simulator.py en otra terminal")
     print(f"  {chr(27)}[33mMonitor:{chr(27)}[0m         Abrí http://localhost:{FLASK_PORT} en tu navegador\n")

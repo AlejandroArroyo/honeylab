@@ -736,9 +736,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   // ── Auto-scroll (con detección de scroll manual) ──
   function autoScroll(el) {
     const threshold = 30;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-    if (atBottom) {
-      el.scrollTop = el.scrollHeight;
+    // Con prepend, el scroll natural es estar arriba
+    const atTop = el.scrollTop < threshold;
+    if (atTop) {
+      el.scrollTop = 0;
     }
   }
 
@@ -774,7 +775,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="sql">${highlightSQL(data.query || '')}</div>
     `;
 
-    trafficBody.appendChild(div);
+    trafficBody.prepend(div);
     autoScroll(trafficBody);
   }
 
@@ -840,7 +841,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             </div>
           `;
         }
-        alertsBody.appendChild(respDiv);
+        alertsBody.prepend(respDiv);
         autoScroll(alertsBody);
       }, 300);
 
@@ -856,7 +857,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       `;
     }
 
-    alertsBody.appendChild(div);
+    alertsBody.prepend(div);
     autoScroll(alertsBody);
 
     // Actualizar estadísticas

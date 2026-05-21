@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Optional, Set
 
 import psycopg2
+from psycopg2 import sql as pgsql
 from colorama import Fore, Style, init
 
 init(autoreset=True)
@@ -225,18 +226,21 @@ def aislar_usuario(user: str) -> bool:
         with conn.cursor() as cur:
             # Revocar en tablas
             cur.execute(
-                "REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM %s",
-                (user,)
+                pgsql.SQL("REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM {}").format(
+                    pgsql.Identifier(user)
+                ),
             )
             # Revocar en secuencias
             cur.execute(
-                "REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM %s",
-                (user,)
+                pgsql.SQL("REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM {}").format(
+                    pgsql.Identifier(user)
+                ),
             )
             # Revocar en funciones
             cur.execute(
-                "REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM %s",
-                (user,)
+                pgsql.SQL("REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM {}").format(
+                    pgsql.Identifier(user)
+                ),
             )
             # Revocar en la base de datos (CONNECT no se toca para que vea el error)
             log_ok(f"Privilegios revocados exitosamente para {user}.")

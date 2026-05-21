@@ -433,6 +433,17 @@ def api_stats():
     })
 
 
+# ── API: Reset (restablecer dashboard) ──
+
+@app.route("/api/reset")
+def api_reset():
+    _stats["total_queries"] = 0
+    _stats["honeytoken_hits"] = 0
+    _stats["revoked_users"] = 0
+    _revoked_users.clear()
+    return jsonify({"status": "ok"})
+
+
 # =============================================================================
 # HTML TEMPLATE (inline — single file)
 # =============================================================================
@@ -515,6 +526,23 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   .header-stats strong { color: var(--text); font-weight: 500; }
   .header-stats .num-honey { color: var(--red); }
+
+  .reset-btn {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    padding: 0.25rem 0.6rem;
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .reset-btn:hover {
+    color: var(--red);
+    border-color: var(--red);
+    background: rgba(239, 68, 68, 0.08);
+  }
 
   /* ── MAIN LAYOUT (dos paneles) ── */
   main {
@@ -678,6 +706,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <span>Consultas: <strong id="statTotal">0</strong></span>
     <span class="num-honey">Honeytoken: <strong id="statHoney">0</strong></span>
     <span>Aislados: <strong id="statRevoked">0</strong></span>
+    <button class="reset-btn" id="resetBtn" title="Restablecer dashboard">↻ Reset</button>
   </div>
 </header>
 
@@ -873,14 +902,53 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         statHoney.textContent   = s.honeytoken_hits;
         statRevoked.textContent = s.revoked_users;
 
-        // Si hay usuario aislados, badge rojo
+        // Badge: rojo si hay aislados, verde si todo nominal
         if (s.revoked_users > 0) {
           statusBadge.className = 'status-badge status-alerta';
           statusBadge.textContent = '● AISLAMIENTO ACTIVO';
+        } else {
+          statusBadge.className = 'status-badge status-nominal';
+          statusBadge.textContent = '● NOMINAL';
         }
       })
       .catch(() => {});
   }
+
+  // ── Reset: limpiar dashboard ──
+  function resetDashboard() {
+    if (!confirm('¿Restablecer dashboard? Los contadores volverán a cero.')) return;
+
+    // Limpiar paneles
+    trafficBody.innerHTML = '';
+    alertsBody.innerHTML  = '';
+
+    // Restaurar empty states
+    trafficBody.innerHTML = `<div class="empty-state" id="trafficEmpty">
+      <div class="icon">📡</div>
+      <div>Esperando conexiones a la base de datos</div>
+      <div style="font-size:0.7rem">Ejecutá traffic_simulator.py para generar tráfico</div>
+    </div>`;
+    alertsBody.innerHTML = `<div class="empty-state" id="alertsEmpty">
+      <div class="icon">🔒</div>
+      <div>Sistema seguro — Sin intrusiones</div>
+      <div style="font-size:0.7rem">Las alertas aparecerán aquí automáticamente</div>
+    </div>`;
+
+    // Resetear contadores locales
+    trafficEvents = 0;
+    alertEvents   = 0;
+    document.getElementById('trafficCount').textContent = '0 eventos';
+    document.getElementById('alertsCount').textContent  = '0 eventos';
+
+    // Resetear backend
+    fetch('/api/reset')
+      .then(r => r.json())
+      .then(() => updateStats())
+      .catch(() => {});
+  }
+
+  // ── Botón de reset ──
+  document.getElementById('resetBtn').addEventListener('click', resetDashboard);
 
   // ── SSE: Tráfico ──
   const trafficSource = new EventSource('/stream/traffic');

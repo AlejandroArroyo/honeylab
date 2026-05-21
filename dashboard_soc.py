@@ -750,8 +750,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   const trafficBody  = document.getElementById('trafficBody');
   const alertsBody   = document.getElementById('alertsBody');
-  const trafficEmpty = document.getElementById('trafficEmpty');
-  const alertsEmpty  = document.getElementById('alertsEmpty');
   const trafficCount = document.getElementById('trafficCount');
   const alertsCount  = document.getElementById('alertsCount');
   const statusBadge  = document.getElementById('statusBadge');
@@ -784,8 +782,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     trafficEvents++;
     trafficCount.textContent = trafficEvents + ' eventos';
 
-    if (trafficEmpty && trafficEmpty.parentNode) {
-      trafficEmpty.remove();
+    const emptyEl = document.getElementById('trafficEmpty');
+    if (emptyEl && emptyEl.parentNode) {
+      emptyEl.remove();
     }
 
     const div = document.createElement('div');
@@ -813,8 +812,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     alertEvents++;
     alertsCount.textContent = alertEvents + ' eventos';
 
-    if (alertsEmpty && alertsEmpty.parentNode) {
-      alertsEmpty.remove();
+    const emptyEl = document.getElementById('alertsEmpty');
+    if (emptyEl && emptyEl.parentNode) {
+      emptyEl.remove();
     }
 
     const div = document.createElement('div');

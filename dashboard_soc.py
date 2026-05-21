@@ -130,7 +130,8 @@ def get_admin_conn() -> Optional[psycopg2.extensions.connection]:
             _conn_admin = psycopg2.connect(**DB_CONFIG)
             _conn_admin.set_session(autocommit=True)
         return _conn_admin
-    except psycopg2.OperationalError:
+    except psycopg2.OperationalError as e:
+        print(f"[{timestamp()}] [ADMIN] Error de conexion: {e}", flush=True)
         return None
 
 
@@ -144,6 +145,8 @@ def aislar_usuario(user: str) -> bool:
 
     conn = get_admin_conn()
     if conn is None:
+        port_info = f"{DB_CONFIG['host']}:{DB_CONFIG['port']}"
+        print(f"[{timestamp()}] [ADMIN] No se pudo conectar a {port_info} para revocar a {user}", flush=True)
         return False
 
     try:
@@ -162,8 +165,10 @@ def aislar_usuario(user: str) -> bool:
             )
         _revoked_users.add(user)
         _stats["revoked_users"] = len(_revoked_users)
+        print(f"[{timestamp()}] [ADMIN] Privilegios revocados exitosamente para {user}", flush=True)
         return True
-    except psycopg2.Error:
+    except psycopg2.Error as e:
+        print(f"[{timestamp()}] [ADMIN] Error ejecutando REVOKE para {user}: {e}", flush=True)
         return False
 
 

@@ -236,7 +236,12 @@ def conectar_con_reintentos(perfil: str, max_intentos: int = 10, espera_base: fl
         except psycopg2.OperationalError as e:
             espera = min(espera_base * intento, 30.0)   # máximo 30s de espera
             ts = timestamp()
-            print(f"{Fore.YELLOW}[{ts}] [{intento}/{max_intentos}] PostgreSQL no listo ({creds['user']}), reintentando en {espera:.0f}s...{Style.RESET_ALL}")
+            error_msg = str(e).strip()[:150]
+            print(f"{Fore.YELLOW}[{ts}] [{intento}/{max_intentos}] {creds['user']} -> {error_msg}{Style.RESET_ALL}")
+            if intento == 1:
+                print(f"  {Fore.CYAN}  Sugerencia: verificá que el contenedor esté corriendo con:{Style.RESET_ALL}")
+                print(f"  {Fore.CYAN}    docker compose ps{Style.RESET_ALL}")
+                print(f"  {Fore.CYAN}    docker compose logs postgres_honeylab{Style.RESET_ALL}")
             time.sleep(espera)
 
     log_error(creds["user"], f"No se pudo conectar tras {max_intentos} intentos. Comprueba que el contenedor está sano.")

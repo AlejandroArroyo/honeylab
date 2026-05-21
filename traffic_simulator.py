@@ -299,12 +299,20 @@ def main() -> None:
     STATS_INTERVAL = 50
     last_stats = 0
 
+    # Contador para forzar honeytoken cada ~25 consultas
+    # Garantiza que el cebo se active aunque la probabilidad aleatoria no dé
+    honey_force_counter = random.randint(20, 30)
+
     try:
         while True:
-            # ─── Decidir acción: ¿usuario normal o sospechoso? ───
-            es_honeytoken = random.random() < HONEYTOKEN_PROB
+            # ─── Decidir acción ───
+            # Regla 1: Si el contador forzado llegó a 0, toca el cebo
+            # Regla 2: 5% de probabilidad aleatoria
+            honey_force_counter -= 1
+            es_honeytoken = honey_force_counter <= 0 or random.random() < HONEYTOKEN_PROB
 
             if es_honeytoken:
+                honey_force_counter = random.randint(20, 30)  # resetear contador
                 perfil = "sospechoso"
                 query  = QUERY_HONEYTOKEN
                 conn   = conn_sospechoso

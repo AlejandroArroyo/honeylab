@@ -1,0 +1,26 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# ── Entorno virtual ──
+.venv/
+venv/
+env/
+
+# ── Logs del laboratorio (se regeneran al arrancar) ──
+logs/
+incidents.jsonl
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Sistema ──
+.DS_Store
+Thumbs.db
